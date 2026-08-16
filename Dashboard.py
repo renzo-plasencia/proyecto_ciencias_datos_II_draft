@@ -6,12 +6,15 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 
-from data_layer import actualizar_datos_si_corresponde, cargar_datos_gold
+from data_layer import actualizar_datos_si_corresponde, cargar_datos_gold,forzar_actualizacion
 from logic_layer import (
     calcular_indice_banco,
     calcular_rentabilidad_normalizada_por_producto,
     calcular_kpis,
+    calcular_ranking_costo_cero,
+    calcular_top_trea_costo_cero,
 )
+from chat_recomender import render_chat_recomendador
 
 APP_TITULO = "Conoce qué producto financiero te conviene más"
 
@@ -62,6 +65,13 @@ def render_header() -> None:
 
     st.divider()
 
+def render_boton_actualizar() -> None:
+    """Botón manual para forzar la actualización del ETL. Sin parámetros. Retorna: None."""
+    with st.sidebar:
+        st.divider()
+        if st.button("🔄 Actualizar datos ahora", use_container_width=True):
+            forzar_actualizacion()
+            st.rerun()
 
 def render_kpis(kpis: dict) -> None:
     """
@@ -225,6 +235,7 @@ def render_navegacion() -> None:
     )
 
 
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -233,12 +244,16 @@ def main() -> None:
     """Orquesta el home: ETL trigger, carga, lógica y visualización. Retorna: None."""
     render_config()
 
+    render_boton_actualizar() 
+
     # --- Capa de datos ---
     actualizar_datos_si_corresponde()
     cuentas_df, dpf_df, tc_df = cargar_datos_gold()
 
     render_header()
 
+    render_chat_recomendador(cuentas_df, dpf_df, tc_df)
+    
     # --- Capa de lógica ---
     indice_banco = calcular_indice_banco(cuentas_df, dpf_df)
     df_rentabilidad = calcular_rentabilidad_normalizada_por_producto(cuentas_df, dpf_df, tc_df)

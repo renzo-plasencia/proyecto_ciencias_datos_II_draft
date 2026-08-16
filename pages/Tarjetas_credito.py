@@ -9,9 +9,10 @@ if str(ROOT_DIR) not in sys.path:
 import streamlit as st
 import plotly.express as px
 import pandas as pd
+import numpy as np
 
 from data_layer import actualizar_datos_si_corresponde, cargar_datos_gold
-from logic_layer import obtener_metricas_tc
+from logic_layer import obtener_metricas_tc,calcular_ranking_membresia_tc, obtener_tarjeta_mas_costosa,preparar_tc_primer_sueldo, obtener_mejor_tarjeta_primer_sueldo
 
 st.set_page_config(page_title="Tarjetas de Crédito", page_icon="💳", layout="wide")
 
@@ -25,6 +26,39 @@ st.title("💳 Tarjetas de Crédito")
 tc_df["valor_neto_anual_recurrente_soles"] = pd.to_numeric(
     tc_df["valor_neto_anual_recurrente_soles"], errors="coerce"
 )
+
+
+def render_grafico_membresia_tc(ranking_membresia: pd.DataFrame, tarjeta_top: pd.Series) -> None:
+    """
+    Renderiza el gráfico de barras del costo de membresía por tarjeta (coloreado por banco),
+    y un mensaje de alerta sobre la tarjeta más costosa en mantenimiento.
+    Parámetros: ranking_membresia (pd.DataFrame), tarjeta_top (pd.Series).
+    Retorna: None.
+    """
+    st.subheader("💳 Costo de membresía anual por tarjeta")
+
+    fig = px.bar(
+        ranking_membresia,
+        x="nombre_tarjeta",
+        y="membresia_num",
+        color="banco",
+        text="membresia_num",
+        labels={"membresia_num": "Membresía anual (S/)", "nombre_tarjeta": "Tarjeta"},
+    )
+    fig.update_traces(texttemplate="S/ %{text:,.0f}", textposition="outside")
+    fig.update_layout(plot_bgcolor="white", height=500, xaxis_tickangle=-40)
+    st.plotly_chart(fig, use_container_width=True)
+
+    if tarjeta_top["membresia_num"] > 0:
+        st.warning(
+            f"⚠️ **Cuidado con el mantenimiento:** la tarjeta con mayor costo de membresía es "
+            f"**{tarjeta_top['nombre_tarjeta']}** de **{tarjeta_top['banco']}**, con "
+            f"**S/ {tarjeta_top['membresia_num']:,.0f}** al año. Antes de solicitarla, revisa si "
+            f"cumples el requisito de exoneración (*{tarjeta_top['requisito_exoneracion_membresia']}*) "
+            f"para evitar pagarla."
+        )
+    else:
+        st.info("✅ Todas las tarjetas analizadas tienen membresía anual de S/ 0.")
 
 # --- 1. Filtro Global por Banco ---
 bancos_disponibles = ["Todos"] + sorted(tc_df["banco"].dropna().unique().tolist())
@@ -135,6 +169,21 @@ with col_chart:
 
 st.divider()
 
+# --- Lógica de membresía respetando el filtro de banco ---
+membresia_banco = calcular_ranking_membresia_tc(tc_filtrado)
+
+if not membresia_banco.empty:
+    tarjeta_top = obtener_tarjeta_mas_costosa(tc_filtrado)
+    render_grafico_membresia_tc(membresia_banco, tarjeta_top)
+else:
+    st.subheader("💳 Costo de membresía anual por tarjeta")
+    st.info("✅ Para el banco seleccionado, ninguna tarjeta requiere pago de membresía anual (S/ 0) o no hay datos.")
+
+#render_grafico_membresia_tc(membresia_banco, tarjeta_top)
+
+
+st.divider()
+
 # --- 4. Tabla de Beneficios Principales ---
 st.subheader("📋 Tabla de Beneficios Principales")
 
@@ -149,7 +198,11 @@ columnas_mostrar = [
 
 # 2. Filtrado de columnas existentes y limpieza de nulos en tarjeta y banco
 columnas_validas = [col for col in columnas_mostrar if col in tc_filtrado.columns]
-tabla_beneficios = tc_filtrado[columnas_validas].dropna(subset=["nombre_tarjeta", "banco"])
+tabla_beneficios = (
+    tc_filtrado[columnas_validas]
+    .dropna(subset=["nombre_tarjeta", "banco"])
+    .drop_duplicates(subset=["nombre_tarjeta", "banco"])   # <-- AGREGAR ESTA LÍNEA
+)
 
 # 3. Mapeo de nombres para las cabeceras visuales
 renombrar_columnas = {
@@ -166,3 +219,44 @@ st.dataframe(
     use_container_width=True,
     hide_index=True
 )
+
+st.divider()
+st.subheader("🎓 Mejor tarjeta de entrada para primer sueldo")
+st.caption("Solo se muestran tarjetas con ingreso mínimo requerido menor a S/ 3,000.")
+
+tc_primer_sueldo = preparar_tc_primer_sueldo(tc_filtrado)
+
+if not tc_primer_sueldo.empty:
+    tc_plot = tc_primer_sueldo.sort_values("membresia_num", ascending=True).copy()
+
+    # Jitter: separa visualmente puntos con el mismo membresia_num
+    np.random.seed(42)  # para que no cambie cada vez que corres la app
+    tc_plot["membresia_num_jitter"] = tc_plot["membresia_num"] + np.random.uniform(-3, 3, size=len(tc_plot))
+    tc_plot["ingreso_min_num_jitter"] = tc_plot["ingreso_min_num"] + np.random.uniform(-3, 3, size=len(tc_plot))
+
+    fig_primer_sueldo = px.scatter(
+        tc_plot,
+        x="ingreso_min_num_jitter",
+        y="membresia_num_jitter",
+        color="banco",
+        hover_data=["banco", "nombre_tarjeta", "membresia_num"],  # el valor real se ve en el hover
+        text="nombre_tarjeta",
+        title="Tarjetas de entrada (ingreso mínimo < S/3,000): ingreso vs membresía",
+        labels={
+            "ingreso_min_num": "Ingreso mínimo requerido (S/)",
+            "membresia_num_jitter": "Membresía anual (S/)",
+        },
+    )
+    fig_primer_sueldo.update_traces(textposition="top center")
+    fig_primer_sueldo.update_layout(plot_bgcolor="white", height=550)
+    st.plotly_chart(fig_primer_sueldo, use_container_width=True)
+
+    mejor = obtener_mejor_tarjeta_primer_sueldo(tc_primer_sueldo)
+    if mejor is not None:
+        st.success(
+            f"🏆 **Mejor tarjeta de entrada:** **{mejor['nombre_tarjeta']}** de "
+            f"**{mejor['banco']}** — ingreso mínimo **S/ {mejor['ingreso_min_num']:,.0f}** "
+            f"y membresía **S/ {mejor['membresia_num']:,.0f}**."
+        )
+else:
+    st.info("No hay tarjetas con ingreso mínimo menor a S/ 3,000 en la selección actual.")

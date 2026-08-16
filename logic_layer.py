@@ -262,3 +262,92 @@ def obtener_metricas_tc(tc_df: pd.DataFrame) -> dict:
     return {
         "mejor_tc": mejor_tc
     }
+
+def calcular_ranking_costo_cero(cuentas_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula el número de cuentas de ahorro con mantenimiento cero por banco.
+    Parámetros: cuentas_df (pd.DataFrame) datos Gold de cuentas de ahorro.
+    Retorna: pd.DataFrame con columnas [banco, num_cuentas], ordenado ascendente.
+    """
+    ranking = (
+        cuentas_df[cuentas_df["es_costo_cero"] == True]
+        .groupby("banco")
+        .size()
+        .reset_index(name="num_cuentas")
+        .sort_values("num_cuentas", ascending=True)
+    )
+    return ranking
+
+
+def calcular_top_trea_costo_cero(cuentas_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
+    """
+    Obtiene el top N de cuentas con mantenimiento cero ordenadas por mejor TREA.
+    Parámetros: cuentas_df (pd.DataFrame), top_n (int) cantidad de filas a devolver.
+    Retorna: pd.DataFrame con columnas [banco, producto_nombre, trea_soles, url_origen].
+    """
+    top = (
+        cuentas_df[cuentas_df["mantenimiento_num"] == 0]
+        .sort_values("trea_soles", ascending=False)
+        .head(top_n)
+        [["banco", "producto_nombre", "trea_soles", "url_origen"]]
+    )
+    return top
+
+def calcular_ranking_membresia_tc(tc_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ordena todas las tarjetas de crédito por costo de membresía anual, de mayor a menor.
+    Parámetros: tc_df (pd.DataFrame) datos Gold de tarjetas de crédito.
+    Retorna: pd.DataFrame con columnas [banco, nombre_tarjeta, membresia_num,
+             requisito_exoneracion_membresia], ordenado descendente por membresia_num.
+    """
+    ranking = (
+        tc_df.loc[
+            tc_df["membresia_num"] > 0,
+            ["banco", "nombre_tarjeta", "membresia_num", "requisito_exoneracion_membresia"]
+        ]
+        .sort_values("membresia_num", ascending=False)
+        .reset_index(drop=True)
+    )
+    return ranking
+
+
+def obtener_tarjeta_mas_costosa(tc_df: pd.DataFrame) -> pd.Series:
+    """
+    Identifica la tarjeta individual con el mayor costo de membresía anual.
+    Parámetros: tc_df (pd.DataFrame) datos Gold de tarjetas de crédito.
+    Retorna: pd.Series con los datos de esa tarjeta (fila completa).
+    """
+    return tc_df.sort_values("membresia_num", ascending=False).iloc[0]
+
+
+def preparar_tc_primer_sueldo(tc_df: pd.DataFrame, ingreso_maximo: float = 3000) -> pd.DataFrame:
+    """
+    Prepara y FILTRA el dataframe de tarjetas a solo aquellas con ingreso
+    mínimo requerido menor a ingreso_maximo, deduplicando por tarjeta única.
+    No usa apta_primer_sueldo por venir con datos inconsistentes en la fuente.
+    Parámetros: tc_df (pd.DataFrame) datos Gold de tarjetas de crédito.
+                ingreso_maximo (float) tope de ingreso mínimo (default S/3,000).
+    Retorna: pd.DataFrame con columnas [banco, nombre_tarjeta, ingreso_min_num,
+             membresia_num], solo con ingreso_min_num < ingreso_maximo.
+    """
+    tmp = tc_df.copy()
+    tmp = tmp.drop_duplicates(subset=["banco", "nombre_tarjeta"])
+    tmp = tmp.dropna(subset=["banco", "nombre_tarjeta", "ingreso_min_num", "membresia_num"])
+    tmp = tmp[tmp["banco"].astype(str).str.strip() != ""]
+
+    tmp = tmp[tmp["ingreso_min_num"] < ingreso_maximo]
+
+    cols = ["banco", "nombre_tarjeta", "ingreso_min_num", "membresia_num"]
+    return tmp[cols]
+
+
+def obtener_mejor_tarjeta_primer_sueldo(tc_primer_sueldo: pd.DataFrame) -> pd.Series:
+    """
+    Identifica la mejor tarjeta de entrada dentro del subconjunto ya filtrado:
+    menor membresía anual (y en empate, menor ingreso mínimo).
+    Parámetros: tc_primer_sueldo (pd.DataFrame) resultado de preparar_tc_primer_sueldo().
+    Retorna: pd.Series con la fila de la mejor tarjeta, o None si está vacío.
+    """
+    if tc_primer_sueldo.empty:
+        return None
+    return tc_primer_sueldo.sort_values(["membresia_num", "ingreso_min_num"], ascending=[True, True]).iloc[0]

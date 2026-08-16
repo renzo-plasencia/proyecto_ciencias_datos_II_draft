@@ -83,7 +83,7 @@ st.divider()
 # --- SECCIÓN: MONTO MÍNIMO REQUERIDO ---
 st.subheader("MONTO MÍNIMO REQUERIDO")
 
-dpf_valid = dpf_filtrado[dpf_filtrado["trea_num"] > 0].copy()
+dpf_valid = dpf_filtrado[dpf_filtrado["trea_num"] >= 0].copy()
 
 if not dpf_valid.empty:
     # --- 4. Monto mínimo de apertura (Gráfico de Barras) ---
@@ -96,39 +96,54 @@ if not dpf_valid.empty:
         y="producto_banco",
         orientation="h",
         text="monto_minimo_num",
-        title="Monto Mínimo de Apertura por Producto (S/)",
+        title="Monto Mínimo de Apertura por Producto (S/) — Menor barrera de entrada primero",
         labels={"monto_minimo_num": "Monto Mínimo (S/)", "producto_banco": "Producto"},
         color_discrete_sequence=["#2b5c8f"]
     )
     fig_monto.update_traces(texttemplate="S/ %{text:,.0f}", textposition="outside")
-    fig_monto.update_layout(yaxis={"categoryorder": "total ascending"}, height=400)
+    fig_monto.update_layout(
+        yaxis={"categoryorder": "array", "categoryarray": dpf_monto_ord["producto_banco"].tolist()[::-1]},
+        height=400
+    )
     st.plotly_chart(fig_monto, use_container_width=True)
+
+    # --- Respuesta directa a la pregunta de negocio ---
+    menor_barrera = dpf_monto_ord.iloc[0]
+    st.success(
+        f"🏆 **Menor barrera de entrada:** **{menor_barrera['producto']}** de "
+        f"**{menor_barrera['banco']}**, con un monto mínimo de apertura de "
+        f"**S/ {menor_barrera['monto_minimo_num']:,.0f}** y una TREA de "
+        f"**{menor_barrera['trea_num']:.2f}%**."
+    )
 
     st.divider()
 
-    # --- 5. TREA vs Monto Mínimo Requerido (Scatter Plot) ---
-    fig_scatter = px.scatter(
-        dpf_valid,
-        x="monto_minimo_num",
-        y="trea_num",
-        color="banco",
-        text="producto",
-        hover_data=["banco", "producto"],
-        title="TREA vs Monto Mínimo Requerido en Depósitos a Plazo Fijo",
-        labels={
-            "monto_minimo_num": "Monto mínimo (S/)",
-            "trea_num": "TREA (%)"
-        }
-    )
-    fig_scatter.update_traces(textposition="top center")
-    fig_scatter.update_layout(plot_bgcolor="white", height=500)
-    st.plotly_chart(fig_scatter, use_container_width=True)
+    # --- 5. TREA vs Monto Mínimo Requerido (Scatter Plot), solo con trea > 0 para no distorsionar ---
+    dpf_scatter = dpf_valid[dpf_valid["trea_num"] > 0]
 
-    st.caption(
-        "📌 **Análisis de la relación TREA vs Monto Mínimo:** "
-        "Permite evaluar la barrera de entrada de cada producto. "
-        "Los productos ubicados en la esquina superior izquierda representan la mejor oportunidad, "
-        "ofreciendo altas tasas de rendimiento (TREA) con un bajo capital de apertura."
-    )
+    if not dpf_scatter.empty:
+        fig_scatter = px.scatter(
+            dpf_scatter,
+            x="monto_minimo_num",
+            y="trea_num",
+            color="banco",
+            text="producto",
+            hover_data=["banco", "producto"],
+            title="TREA vs Monto Mínimo Requerido en Depósitos a Plazo Fijo",
+            labels={
+                "monto_minimo_num": "Monto mínimo (S/)",
+                "trea_num": "TREA (%)"
+            }
+        )
+        fig_scatter.update_traces(textposition="top center")
+        fig_scatter.update_layout(plot_bgcolor="white", height=500)
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+        st.caption(
+            "📌 **Análisis de la relación TREA vs Monto Mínimo:** "
+            "Permite evaluar la barrera de entrada de cada producto. "
+            "Los productos ubicados en la esquina superior izquierda representan la mejor oportunidad, "
+            "ofreciendo altas tasas de rendimiento (TREA) con un bajo capital de apertura."
+        )
 else:
     st.info("No hay datos de depósitos a plazo disponibles para la selección actual.")

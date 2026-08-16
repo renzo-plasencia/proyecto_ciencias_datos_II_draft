@@ -8,13 +8,49 @@ if str(ROOT_DIR) not in sys.path:
 
 # Ahora ya puedes importar tus módulos sin problema
 from data_layer import actualizar_datos_si_corresponde, cargar_datos_gold
-from logic_layer import obtener_metricas_cuentas_ahorro
-
+from logic_layer import obtener_metricas_cuentas_ahorro,calcular_ranking_costo_cero, calcular_top_trea_costo_cero
 import streamlit as st
 import plotly.express as px
 import pandas as pd
 
 st.set_page_config(page_title="Cuentas de Ahorro", page_icon="🏦", layout="wide")
+
+
+def render_grafico_costo_cero(ranking_costo_cero: pd.DataFrame) -> None:
+    """
+    Renderiza el ranking de bancos por cantidad de cuentas con mantenimiento cero.
+    """
+    st.subheader("🏦 Bancos con más cuentas de mantenimiento cero")
+
+    fig = px.bar(
+        ranking_costo_cero,
+        x="num_cuentas",
+        y="banco",
+        orientation="h",
+        text="num_cuentas",
+        labels={"num_cuentas": "N° de cuentas", "banco": ""},
+    )
+    fig.update_layout(plot_bgcolor="white", height=400)
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_tabla_top_trea_costo_cero(top_trea: pd.DataFrame) -> None:
+    """
+    Renderiza la tabla del top de cuentas sin mantenimiento con mejor TREA, con link a la fuente.
+    """
+    st.subheader("🏆 Top cuentas sin mantenimiento con mejor TREA")
+
+    st.dataframe(
+        top_trea,
+        column_config={
+            "banco": "Banco",
+            "producto_nombre": "Producto",
+            "trea_soles": st.column_config.NumberColumn("TREA (%)", format="%.2f%%"),
+            "url_origen": st.column_config.LinkColumn("Ver detalle", display_text="🔗 Abrir"),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
 
 # --- Capa de datos ---
 actualizar_datos_si_corresponde()
@@ -104,3 +140,14 @@ if not df_costos.empty:
     st.plotly_chart(fig_costos, use_container_width=True)
 else:
     st.info("No se registraron datos de costo de mantenimiento.")
+
+st.divider()
+
+# --- 
+st.subheader("RANKING CUENTAS COSTO 0")
+ranking_costo_cero = calcular_ranking_costo_cero(cuentas_df)
+top_trea_costo_cero = calcular_top_trea_costo_cero(cuentas_df)
+
+render_grafico_costo_cero(ranking_costo_cero)
+st.divider()
+render_tabla_top_trea_costo_cero(top_trea_costo_cero)
