@@ -8,3 +8,4 @@ pyarrow
 streamlit
 webdriver-manager
 plotly
+nbformat
