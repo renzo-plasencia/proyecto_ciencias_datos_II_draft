@@ -40,6 +40,12 @@ def consolidar_capa_gold():
     if archivos_tc:
         df_tc = pd.concat([pd.read_parquet(f) for f in archivos_tc], ignore_index=True)
         df_tc = df_tc.drop_duplicates(subset=['banco', 'nombre_tarjeta'])
+        # PARCHE: Eliminar filas fantasma que no tengan banco asignado
+        df_tc = df_tc.dropna(subset=['banco', 'nombre_tarjeta'])
+        df_tc = df_tc[df_tc['banco'].astype(str).str.strip() != 'None']
+        df_tc = df_tc[df_tc['banco'].astype(str).str.strip() != '']
+    
+        
         
         # INGENIERÍA DE CARACTERÍSTICAS (FEATURE ENGINEERING)
         # 1. Limpiar Costos e Ingresos para que sean operables numéricamente
